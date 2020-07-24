@@ -1,0 +1,14 @@
+Describe "Function write_debug"
+  Describe "write_debug()"
+
+    Include cis-audit.sh
+    debug="True"
+    It "Writes output to debug"
+      When call write_debug test
+      The output should eq ""
+      The error should start with "[DEBUG] "
+      The error should end with " test"
+    End
+  End
+End
+    

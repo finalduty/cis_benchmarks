@@ -1,0 +1,16 @@
+Describe ""
+    Include cis-audit.sh
+    TEST_BASE=".tmp"
+
+    cleanup() { rm -rf "$TEST_BASE"; }
+    setup() { mkdir -p "$TEST_BASE"; }
+    test_start() { echo 1; }
+    test_finish() { echo 99; }
+    write_result() { echo "$*"; }
+
+    It ""
+
+        When call 
+        The output should eq "1"
+    End
+End
