@@ -43,6 +43,8 @@ renice_value=5
 start_time=$(date +%s)
 color=True
 test_level=0
+output_json=False
+output_json_file="/opt/app/cis/result.json"
 
 
 ### Functions ###
@@ -113,6 +115,7 @@ EOF
 |||--level (1,2)|Run tests for the specified level only
 |||--include "<test_ids>"|Space delimited list of tests to include
 |||--exclude "<test_ids>"|Space delimited list of tests to exclude
+|||--output-json|output the results to the terminal for json
 |||--nice |Lower the CPU priority for test execution. This is the default behaviour.
 |||--no-nice|Do not lower CPU priority for test execution. This may make the tests complete faster but at 
 ||||the cost of putting a higher load on the server. Setting this overrides the --nice option.
@@ -147,12 +150,35 @@ exit 0
 now() {
     echo $(( $(date +%s%N) / 1000000 ))
 } ## Short function to give standardised time for right now (saves updating the date method everywhere)
+outputter_to_json() {
+    ## clear file
+    cat /dev/null > $output_json_file
+    echo -e "[\c" >> $output_json_file
+    first=true
+    sort -V $tmp_file | while read line; do
+    ID=$(echo $line|cut -d, -f1)
+    if [ ! -n "$ID" ]; then
+        continue
+    fi
+    Description=$(echo $line|cut -d, -f2)
+    Scoring=$(echo $line|cut -d, -f3)
+    Level=$(echo $line|cut -d, -f4)
+    Result=$(echo $line|cut -d, -f5)
+    Duration=$(echo $line|cut -d, -f6)
+    if [ "$first" == true ]; then
+        echo -e "{\"ID\":\"$ID\",\"Description\":\"$Description\",\"Scoring\":\"$Scoring\",\"Level\":\"$Level\",\"Result\":\"$Result\",\"Duration\":\"$Duration\"}\c" >> $output_json_file
+        first=false
+    else
+        echo -e ",{\"ID\":\"$ID\",\"Description\":\"$Description\",\"Scoring\":\"$Scoring\",\"Level\":\"$Level\",\"Result\":\"$Result\",\"Duration\":\"$Duration\"}\c" >> $output_json_file
+    fi
+    done
+    echo -e "]\c" >> $output_json_file
+} ## Prettily output the results to the terminal for json
 outputter() {
     write_debug "Formatting and writing results to STDOUT"
     echo
     echo " CIS CentOS 7 Benchmark v2.2.0 Results "
     echo "---------------------------------------"
-    
     if [ -t 1 -a $color == "True" ]; then
         (
             echo "ID,Description,Scoring,Level,Result,Duration"
@@ -194,6 +220,10 @@ parse_args() {
     ## Check arguments for --debug
     $(echo $args | grep -- '--debug' &>/dev/null)  &&   debug="True" || debug="False"
     write_debug "Debug enabled"
+
+    ## Check arguments for --output-json
+    $(echo $args | grep -- '--output-json' &>/dev/null)  &&   output_json="True" || output_json="False"
+    write_debug "output_json enabled"
     
     ## Full noise output
     $(echo $args | grep -- '--trace' &>/dev/null) &&  trace="True" && set -x
@@ -259,7 +289,9 @@ progress() {
         char=${array[$pos]}
         
         script_duration="$(date +%T -ud @$(( $(date +%s) - $start_time )))"
-        printf "\r[$script_duration] ($char) $finished of $started tests completed " >&2
+        if [ $output_json == "False" ]; then
+            printf "\r[$script_duration] ($char) $finished of $started tests completed " >&2
+        fi
         
         #ps --ppid $$ >> ~/tmp/cis-audit
         #running_children >> ~/tmp/cis-audit
@@ -272,7 +304,10 @@ progress() {
     finished=$( wc -l $finished_counter | awk '{print $1}' )
     script_duration="$(date +%T -ud @$(( $(date +%s) - $start_time )))"
     #printf "\r[✓] $finished of $finished tests completed\n" >&2
-    printf "\r[$script_duration] (✓) $started of $started tests completed\n" >&2
+    if [ $output_json == "False" ]; then
+        printf "\r[$script_duration] (✓) $started of $started tests completed\n" >&2
+    fi
+    
 } ## Prints a pretty progress spinner while running tests
 run_test() {
     id=$1
@@ -3145,7 +3180,12 @@ echo "FINISHED" > $tmp_file_base-stage
 write_debug "All tests have completed"
 
 ## Output test results
-outputter
+if [ $output_json == "True" ]; then
+  outputter_to_json
+else
+  outputter
+fi
+
 tidy_up
 
 write_debug "Exiting with code $exit_code"
